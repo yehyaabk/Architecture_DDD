@@ -1,6 +1,6 @@
 // Couche métier : séances et places disponibles
 import { BookingRepository } from "../data/bookingRepository";
-import { Booking } from "../data/jsonDatabase";
+import { Booking, Screening } from "../data/jsonDatabase";
 import { ScreeningRepository } from "../data/screeningRepository";
 
 export interface AvailableScreening {
@@ -16,12 +16,13 @@ export class ScreeningService {
   private screeningRepository = new ScreeningRepository();
   private bookingRepository = new BookingRepository();
 
-  countTakenSeats(screeningId: string, bookings: Booking[]): number {
+  /** Seul endroit où sont calculées les places restantes d'une séance. */
+  remainingSeats(screening: Screening, bookings: Booking[]): number {
     let taken = 0;
     for (const b of bookings) {
-      if (b.screeningId === screeningId && b.status === "CONFIRMED") taken += b.seats;
+      if (b.screeningId === screening.id && b.status === "CONFIRMED") taken += b.seats;
     }
-    return taken;
+    return screening.capacity - taken;
   }
 
   listUpcoming(): AvailableScreening[] {
@@ -37,7 +38,7 @@ export class ScreeningService {
         room: s.room,
         startsAt: s.startsAt,
         price: s.price,
-        remaining: s.capacity - this.countTakenSeats(s.id, bookings),
+        remaining: this.remainingSeats(s, bookings),
       });
     }
     return result;

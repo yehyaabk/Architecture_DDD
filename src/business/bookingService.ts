@@ -4,7 +4,15 @@ import { Booking } from "../data/jsonDatabase";
 import { Mailer } from "../data/mailer";
 import { PaymentGateway } from "../data/paymentGateway";
 import { ScreeningRepository } from "../data/screeningRepository";
+import {
+  CANCELLATION_DEADLINE_HOURS,
+  CANCELLATION_DEADLINE_MS,
+  EMAIL_PATTERN,
+  MAX_SEATS_PER_BOOKING,
+  MIN_SEATS_PER_BOOKING,
+} from "./bookingRules";
 import { BusinessRuleError, NotFoundError, PaymentRefusedError, ValidationError } from "./errors";
+import { computeTotalPrice, Tariff } from "./pricing";
 import { ScreeningService } from "./screeningService";
 
 export interface BookingRequest {
@@ -30,28 +38,27 @@ export class BookingService {
     if (!s) throw new NotFoundError("Séance introuvable");
 
     const { email, seats, tariff } = request;
-    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email))) {
+    if (!email || !EMAIL_PATTERN.test(String(email))) {
       throw new ValidationError("Email invalide");
     }
 
-    if (!Number.isInteger(seats) || seats < 1 || seats > 6) {
-      throw new ValidationError("Entre 1 et 6 places par réservation");
+    if (!Number.isInteger(seats) || seats < MIN_SEATS_PER_BOOKING || seats > MAX_SEATS_PER_BOOKING) {
+      throw new ValidationError(
+        `Entre ${MIN_SEATS_PER_BOOKING} et ${MAX_SEATS_PER_BOOKING} places par réservation`
+      );
     }
 
     if (new Date(s.startsAt) <= new Date()) {
       throw new BusinessRuleError("La séance a déjà commencé");
     }
 
-    const taken = this.screeningService.countTakenSeats(s.id, this.bookingRepository.findAll());
-    if (taken + seats > s.capacity) {
+    if (seats > this.screeningService.remainingSeats(s, this.bookingRepository.findAll())) {
       throw new BusinessRuleError("Plus assez de places");
     }
 
-    // calcul du prix (en centimes)
-    let unit = s.price;
-    if (tariff === "STUDENT") unit = Math.round(unit * 0.7);
-    let total = unit * seats;
-    if (seats >= 4) total = Math.round(total * 0.9);
+    // tout tarif autre que STUDENT est traité comme NORMAL (comportement legacy)
+    const normalizedTariff: Tariff = tariff === "STUDENT" ? "STUDENT" : "NORMAL";
+    const total = computeTotalPrice(s.price, seats, normalizedTariff);
 
     if (!this.paymentGateway.charge(total)) throw new PaymentRefusedError("Paiement refusé");
 
@@ -61,7 +68,7 @@ export class BookingService {
       // l'e-mail est conservé tel que reçu (comportement legacy, cf. AUDIT.md)
       email: email as string,
       seats: seats,
-      tariff: tariff === "STUDENT" ? "STUDENT" : "NORMAL",
+      tariff: normalizedTariff,
       total: total,
       status: "CONFIRMED",
       createdAt: new Date().toISOString(),
@@ -82,8 +89,10 @@ export class BookingService {
     // suivante lève une TypeError, ce qui donne une erreur 500
     const s = this.screeningRepository.findById(b.screeningId)!;
     const diff = new Date(s.startsAt).getTime() - new Date().getTime();
-    if (diff < 2 * 60 * 60 * 1000) {
-      throw new BusinessRuleError("Annulation impossible moins de 2h avant la séance");
+    if (diff < CANCELLATION_DEADLINE_MS) {
+      throw new BusinessRuleError(
+        `Annulation impossible moins de ${CANCELLATION_DEADLINE_HOURS}h avant la séance`
+      );
     }
 
     b.status = "CANCELLED";

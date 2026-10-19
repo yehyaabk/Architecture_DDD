@@ -96,16 +96,98 @@ Légende des responsabilités : **P** = Présentation · **M** = Règle métier 
 
 ## 3. Violations SOLID (S, O, L, I, D)
 
-_À compléter (partie B)_
+> Analyse du code legacy (`src/server.ts` au commit `ed2b574`, mêmes numéros de lignes que les sections 1 et 2).
+
+| Lettre | Violation ? | Où | Explication |
+|---|---|---|---|
+| **S** (Single Responsibility) | Oui | 49-107 (et le fichier entier) | Le handler POST a au moins 5 raisons de changer : le format HTTP, les règles de réservation, la grille tarifaire, le stockage (`fs`) et le prestataire de mail ou de paiement. Une modification de la remise groupe et un passage à PostgreSQL touchent la même fonction. |
+| **O** (Open/Closed) | Oui | 79, 92 ; 101-104 | Ajouter un tarif (ex. `SENIOR`) oblige à modifier les `if` / ternaires des l. 79 et 92. Ajouter un canal de notification (SMS) oblige à modifier le handler. Rien ne permet d'étendre le comportement sans éditer le code existant. |
+| **L** (Liskov Substitution) | Ne s'applique pas | — | Le code ne contient ni classe, ni héritage, ni interface : il n'y a aucun sous-type qui pourrait mal se substituer à son parent. Le principe deviendra pertinent au TP2, quand on fournira un faux `PaymentGateway` ou un dépôt en mémoire : ils devront respecter le même contrat que l'implémentation réelle. |
+| **I** (Interface Segregation) | Ne s'applique pas au sens strict | 12-18 | Aucune interface n'est déclarée, donc aucune interface « trop grosse ». On voit cependant le problème que l'ISP prévient : `readDb()` renvoie toute la base (séances et réservations) à chaque route, même à `GET /bookings` qui n'a besoin que des réservations d'un client. |
+| **D** (Dependency Inversion) | Oui | 13, 17, 25, 64, 84, 101, 128 | Les règles métier (haut niveau) dépendent directement de détails techniques (bas niveau) : `fs.readFileSync` / `writeFileSync`, `new Date()`, `Math.random()`, `console.log`. Aucune abstraction entre les deux. Le découpage en couches ne corrige pas encore ce point : `BookingService` fait lui-même `new PaymentGateway()`, `new Mailer()`, etc. (`src/business/bookingService.ts:30-34`). |
 
 ## 4. Graphe des dépendances de POST /screenings/:id/bookings
 
-_À compléter (partie B)_
+> Code actuel, après le découpage en couches. Flèche pleine : instanciation (`new`) ou import. Flèche pointillée : appel à une fonction globale.
+
+```mermaid
+flowchart TD
+    client(["Client HTTP"]) --> express["express + express.json()<br/>presentation/app.ts"]
+    express --> route["POST /screenings/:id/bookings<br/>presentation/bookingRoutes.ts"]
+    express --> errorHandler["errorHandler<br/>erreur métier → code HTTP"]
+    route -- "new (au chargement du module)" --> bookingService["BookingService.book()<br/>business/bookingService.ts"]
+
+    bookingService --> rules["bookingRules.ts<br/>constantes"]
+    bookingService --> pricing["computeTotalPrice()<br/>business/pricing.ts"]
+    bookingService --> errors["errors.ts"]
+    bookingService -- new --> screeningService["ScreeningService.remainingSeats()"]
+    bookingService -- new --> screeningRepo["ScreeningRepository"]
+    bookingService -- new --> bookingRepo["BookingRepository"]
+    bookingService -- new --> payment["PaymentGateway"]
+    bookingService -- new --> mailer["Mailer"]
+    screeningService -- new --> screeningRepo
+    screeningService -- new --> bookingRepo
+
+    screeningRepo --> jsonDb["jsonDatabase.ts<br/>readDb / writeDb"]
+    bookingRepo --> jsonDb
+    jsonDb --> fs[["fs (readFileSync / writeFileSync)"]]
+    jsonDb --> dbFile[("data/db.json<br/>chemin en dur")]
+    payment -.-> random[["Math.random()"]]
+    mailer -.-> console[["console.log"]]
+    bookingService -.-> clock[["new Date() / Date.now()"]]
+
+    classDef pure fill:#d4edda,stroke:#2e7d32,color:#1b1b1b
+    classDef hard fill:#f8d7da,stroke:#c62828,color:#1b1b1b
+    class pricing,rules,errors pure
+    class fs,dbFile,random,console,clock hard
+```
+
+En vert, le code pur (aucun effet de bord). En rouge, les dépendances non déterministes ou à effet de bord.
 
 ## 5. Dépendances remplaçables en test ?
 
-_À compléter (partie B)_
+« Sans modifier le code » = sans toucher à `src/`. On distingue deux cas : **par conception**, quand le code prévoit un point de substitution (paramètre, constructeur), et **par contournement**, quand on écrase un global ou un module depuis le test (`vi.mock`, `vi.spyOn`, `vi.useFakeTimers`).
+
+| Dépendance | Utilisée dans | Remplaçable par conception ? | Contournement possible | Verdict |
+|---|---|---|---|---|
+| Serveur HTTP (port) | `server.ts` | Oui : `app` est exporté et `listen` n'est appelé que si le fichier est lancé directement | — | **Oui**, avec supertest sur `app`, sans ouvrir de port. |
+| `BookingService` | `bookingRoutes.ts:6` | Non : instancié au chargement du module | `vi.mock("../src/business/bookingService")` | **Non** proprement. |
+| `ScreeningRepository`, `BookingRepository` | `bookingService.ts:30-31`, `screeningService.ts` | Non : `new` dans les champs privés | `vi.mock` des modules data | **Non** proprement. |
+| `fs` + `data/db.json` | `jsonDatabase.ts:34, 38` | Non : chemin `DB_FILE` en dur, aucun paramètre | `vi.mock("fs")`, ou écrire un vrai `db.json` de test (et le restaurer après) | **Non** : les tests écrivent dans le vrai fichier du dépôt ou dépendent d'un mock global fragile. |
+| `PaymentGateway` / `Math.random()` | `bookingService.ts:33`, `paymentGateway.ts:8` | Non | `vi.spyOn(Math, "random")` | **Non** proprement : sans contournement, un test sur 20 échoue au hasard (402). |
+| `Mailer` / `console.log` | `bookingService.ts:34`, `mailer.ts` | Non | `vi.spyOn(console, "log")` | **Non** proprement : la seule façon de vérifier l'envoi est d'intercepter la console. |
+| `new Date()` / `Date.now()` | `bookingService.ts:51, 66, 74` | Non : l'heure n'est jamais passée en paramètre | `vi.useFakeTimers()` + `vi.setSystemTime()` | **Non** proprement : sans contournement, les tests dépendent de l'heure d'exécution. |
+| `computeTotalPrice` | `pricing.ts` | Pas besoin : fonction pure | — | **Oui**, testée directement (`test/pricing.test.ts`). |
+| Constantes (`bookingRules.ts`, `pricing.ts`) | — | Pas besoin : valeurs fixes | — | **Oui**. |
+
+Conclusion : seules les parties sans dépendance (fonction pure, constantes) et l'application Express entière sont utilisables telles quelles en test. Tout le reste ne se remplace qu'en écrasant des modules ou des globaux, ce qui couple les tests aux détails d'implémentation. L'injection de dépendances (TP2) supprimera ce problème.
 
 ## 6. Bilan : ce qui est testable / intestable
 
-_À compléter (partie B)_
+### Testable sans serveur ni `db.json`
+
+| Règle métier | Comment | Pourquoi c'est possible |
+|---|---|---|
+| Tarif étudiant -30 % | `computeTotalPrice(…, "STUDENT")` | Fonction pure : le résultat dépend uniquement des paramètres. |
+| Remise groupe -10 % dès 4 places | `computeTotalPrice(…, 4, …)` | Idem. |
+| Arrondis au centime et cumul des deux remises | `computeTotalPrice` | Idem. Couvert par 7 tests dans `test/pricing.test.ts`. |
+| Calcul des places restantes | `new ScreeningService().remainingSeats(screening, bookings)` | La méthode reçoit la séance et les réservations en paramètres. Le constructeur crée des dépôts, mais ils ne lisent le disque que si on les appelle. Pas encore de test écrit. |
+
+### Intestable (sans serveur ou sans `db.json`)
+
+| Règle métier | Où | Pourquoi |
+|---|---|---|
+| 1 à 6 places par réservation | `BookingService.book()` | La logique est simple, mais elle s'exécute après `screeningRepository.findById()` : il faut une séance dans `db.json` pour l'atteindre. |
+| Format de l'e-mail | `BookingService.book()` | Même raison. |
+| Refus d'une séance déjà commencée | `BookingService.book()` | Dépend de `new Date()` et d'une séance lue dans `db.json`. |
+| Capacité de la salle | `BookingService.book()` | Les réservations existantes sont lues dans `db.json`. |
+| Paiement refusé (402) | `BookingService.book()` | `PaymentGateway` est créé par le service et repose sur `Math.random()`. |
+| Enregistrement et envoi du mail de confirmation | `BookingService.book()` | Écrit dans le vrai `db.json` et passe par `console.log`. |
+| Annulation jusqu'à 2 h avant | `BookingService.cancel()` | Dépend de `new Date()` et de `db.json`. |
+| Annulation refusée si déjà annulée | `BookingService.cancel()` | Dépend de `db.json`. |
+| Liste des séances à venir | `ScreeningService.listUpcoming()` | Dépend de `new Date()` et de `db.json`. |
+| Réservations d'un client avec film et date | `BookingService.listByEmail()` | Dépend de `db.json`. |
+
+**Cause commune :** les services créent eux-mêmes leurs dépendances (`new` dans les champs) et appellent directement des fonctions globales (`new Date()`, `Math.random()`, `console.log`, `fs`). Aucun point d'entrée ne permet de leur fournir une horloge fixe, un paiement prévisible ou des données en mémoire.
+
+**Pistes pour le TP2 :** injecter les dépôts, le paiement et le mailer par le constructeur derrière des interfaces, et injecter aussi une horloge (`Clock`) et un générateur d'id. Toutes les règles du second tableau deviendront alors testables avec des faux en mémoire.

@@ -1,6 +1,5 @@
-// Couche métier : calcul du prix d'une réservation (fonction pure, en centimes)
-
-export type Tariff = "NORMAL" | "STUDENT";
+// Domaine : calcul du prix d'une réservation (fonction pure, en centimes)
+import { Tariff } from "./Booking";
 
 /** Tarif étudiant : -30 %, appliqué au prix unitaire. */
 export const STUDENT_PRICE_FACTOR = 0.7;

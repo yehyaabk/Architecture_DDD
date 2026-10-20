@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTotalPrice } from "../src/business/pricing";
+import { computeTotalPrice } from "../src/domain/pricing";
 
 describe("computeTotalPrice", () => {
   it("tarif normal : prix unitaire × nombre de places", () => {

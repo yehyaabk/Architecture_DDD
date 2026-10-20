@@ -2,11 +2,11 @@
   "name": "cineresa-legacy",
   "version": "1.0.0",
   "description": "CinéResa — version legacy à refactorer",
-  "main": "src/server.ts",
+  "main": "src/main.ts",
   "scripts": {
     "seed": "tsx scripts/seed.ts",
-    "start": "tsx src/server.ts",
-    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc"
   },

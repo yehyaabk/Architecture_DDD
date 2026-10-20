@@ -1,18 +1,11 @@
-// Couche présentation : seul endroit où les erreurs métier deviennent des codes HTTP
+// Couche présentation : seul endroit où les erreurs métier du TP1 deviennent des codes HTTP
+// (les DomainError du cœur hexagonal sont traduites par adapters/in/http/domainErrorHandler.ts)
 import { ErrorRequestHandler } from "express";
-import {
-  BusinessError,
-  BusinessRuleError,
-  NotFoundError,
-  PaymentRefusedError,
-  ValidationError,
-} from "../business/errors";
+import { BusinessError, BusinessRuleError, NotFoundError } from "../business/errors";
 
 function statusOf(err: BusinessError): number {
   if (err instanceof NotFoundError) return 404;
-  if (err instanceof ValidationError) return 400;
   if (err instanceof BusinessRuleError) return 409;
-  if (err instanceof PaymentRefusedError) return 402;
   return 500;
 }
 

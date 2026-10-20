@@ -1,25 +1,11 @@
-// Couche métier : réservation, annulation et consultation des réservations
+// Couche métier : annulation et consultation des réservations
+// (la réservation est passée en hexagonal : application/usecases/BookSeatsService.ts)
 import { BookingRepository } from "../data/bookingRepository";
 import { Booking } from "../data/jsonDatabase";
 import { Mailer } from "../data/mailer";
-import { PaymentGateway } from "../data/paymentGateway";
 import { ScreeningRepository } from "../data/screeningRepository";
-import {
-  CANCELLATION_DEADLINE_HOURS,
-  CANCELLATION_DEADLINE_MS,
-  EMAIL_PATTERN,
-  MAX_SEATS_PER_BOOKING,
-  MIN_SEATS_PER_BOOKING,
-} from "./bookingRules";
-import { BusinessRuleError, NotFoundError, PaymentRefusedError, ValidationError } from "./errors";
-import { computeTotalPrice, Tariff } from "./pricing";
-import { ScreeningService } from "./screeningService";
-
-export interface BookingRequest {
-  email: unknown;
-  seats: number;
-  tariff: unknown;
-}
+import { CANCELLATION_DEADLINE_HOURS, CANCELLATION_DEADLINE_MS } from "./bookingRules";
+import { BusinessRuleError, NotFoundError } from "./errors";
 
 export interface BookingWithScreening extends Booking {
   movie: string;
@@ -29,56 +15,7 @@ export interface BookingWithScreening extends Booking {
 export class BookingService {
   private screeningRepository = new ScreeningRepository();
   private bookingRepository = new BookingRepository();
-  private screeningService = new ScreeningService();
-  private paymentGateway = new PaymentGateway();
   private mailer = new Mailer();
-
-  book(screeningId: string, request: BookingRequest): Booking {
-    const s = this.screeningRepository.findById(screeningId);
-    if (!s) throw new NotFoundError("Séance introuvable");
-
-    const { email, seats, tariff } = request;
-    if (!email || !EMAIL_PATTERN.test(String(email))) {
-      throw new ValidationError("Email invalide");
-    }
-
-    if (!Number.isInteger(seats) || seats < MIN_SEATS_PER_BOOKING || seats > MAX_SEATS_PER_BOOKING) {
-      throw new ValidationError(
-        `Entre ${MIN_SEATS_PER_BOOKING} et ${MAX_SEATS_PER_BOOKING} places par réservation`
-      );
-    }
-
-    if (new Date(s.startsAt) <= new Date()) {
-      throw new BusinessRuleError("La séance a déjà commencé");
-    }
-
-    if (seats > this.screeningService.remainingSeats(s, this.bookingRepository.findAll())) {
-      throw new BusinessRuleError("Plus assez de places");
-    }
-
-    // tout tarif autre que STUDENT est traité comme NORMAL (comportement legacy)
-    const normalizedTariff: Tariff = tariff === "STUDENT" ? "STUDENT" : "NORMAL";
-    const total = computeTotalPrice(s.price, seats, normalizedTariff);
-
-    if (!this.paymentGateway.charge(total)) throw new PaymentRefusedError("Paiement refusé");
-
-    const booking: Booking = {
-      id: "b" + Date.now(),
-      screeningId: s.id,
-      // l'e-mail est conservé tel que reçu (comportement legacy, cf. AUDIT.md)
-      email: email as string,
-      seats: seats,
-      tariff: normalizedTariff,
-      total: total,
-      status: "CONFIRMED",
-      createdAt: new Date().toISOString(),
-    };
-    this.bookingRepository.insert(booking);
-
-    this.mailer.sendBookingConfirmation(booking.email, booking.id, s.movie, seats, total);
-
-    return booking;
-  }
 
   cancel(bookingId: string): Booking {
     const b = this.bookingRepository.findById(bookingId);

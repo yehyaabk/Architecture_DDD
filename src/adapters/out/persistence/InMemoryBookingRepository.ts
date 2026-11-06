@@ -16,9 +16,4 @@ export class InMemoryBookingRepository implements BookingRepository {
   async save(booking: Booking): Promise<void> {
     this.bookings.push(booking);
   }
-
-  /** Pour les tests : toutes les réservations enregistrées. */
-  all(): Booking[] {
-    return [...this.bookings];
-  }
 }

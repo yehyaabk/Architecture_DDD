@@ -21,7 +21,7 @@ export class ListUpcomingScreeningsService implements ListUpcomingScreenings {
         room: s.room,
         startsAt: s.startsAt,
         unitPrice: s.unitPrice,
-        remaining: remainingSeats(s, await this.bookings.findByScreeningId(s.id)),
+        remaining: remainingSeats(s, await this.bookings.countConfirmedSeats(s.id)),
       });
     }
     return result;

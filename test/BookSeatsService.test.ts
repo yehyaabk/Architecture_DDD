@@ -56,8 +56,9 @@ function setup(options: { screening?: Screening; bookings?: Booking[]; paymentAc
 type Context = ReturnType<typeof setup>;
 
 /** Une demande refusée ne doit laisser aucune trace : ni réservation, ni paiement, ni notification. */
-async function expectNoEffect({ bookings, payment, notifier }: Context, alreadyBooked: Booking[] = []) {
-  expect(await bookings.findByScreeningId("s1")).toEqual(alreadyBooked);
+async function expectNoEffect({ bookings, payment, notifier }: Context, takenSeats = 0) {
+  expect(await bookings.findById("b1")).toBeNull();
+  expect(await bookings.countConfirmedSeats("s1")).toBe(takenSeats);
   expect(payment.charges).toEqual([]);
   expect(notifier.confirmations).toEqual([]);
 }
@@ -79,21 +80,20 @@ describe("BookSeatsService", () => {
       createdAt: NOW,
     };
     expect(booking).toEqual(expected);
-    expect(await context.bookings.findByScreeningId("s1")).toEqual([expected]);
+    expect(await context.bookings.findById("b1")).toEqual(expected);
     expect(context.payment.charges).toEqual([{ email: "client@example.com", amount: 2520 }]);
     expect(context.notifier.confirmations).toEqual([{ booking: expected, screening: SCREENING }]);
   });
 
   it("refuse si la capacité de la salle est dépassée", async () => {
-    const alreadyBooked = [existingBooking(9)];
-    const context = setup({ bookings: alreadyBooked });
+    const context = setup({ bookings: [existingBooking(9)] });
 
     await expect(context.service.execute(COMMAND)).rejects.toMatchObject({
       code: "CONFLICT",
       message: "Plus assez de places",
     });
 
-    await expectNoEffect(context, alreadyBooked);
+    await expectNoEffect(context, 9);
   });
 
   it("refuse une séance déjà commencée (code CONFLICT)", async () => {
@@ -151,7 +151,7 @@ describe("BookSeatsService", () => {
 
     // le paiement a bien été demandé, avec le bon montant, mais rien d'autre n'a suivi
     expect(context.payment.charges).toEqual([{ email: "client@example.com", amount: 2000 }]);
-    expect(await context.bookings.findByScreeningId("s1")).toEqual([]);
+    expect(await context.bookings.findById("b1")).toBeNull();
     expect(context.notifier.confirmations).toEqual([]);
   });
 });

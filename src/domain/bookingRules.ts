@@ -15,13 +15,18 @@ export function isValidSeatCount(seats: number): boolean {
   return Number.isInteger(seats) && seats >= MIN_SEATS_PER_BOOKING && seats <= MAX_SEATS_PER_BOOKING;
 }
 
-/** Seul endroit où sont calculées les places restantes d'une séance. */
-export function remainingSeats(screening: Screening, bookings: Booking[]): number {
+/** Seul endroit qui définit les places prises sur une séance : seules les réservations confirmées comptent. */
+export function confirmedSeats(bookings: Booking[], screeningId: string): number {
   let taken = 0;
   for (const b of bookings) {
-    if (b.screeningId === screening.id && b.status === "CONFIRMED") taken += b.seats;
+    if (b.screeningId === screeningId && b.status === "CONFIRMED") taken += b.seats;
   }
-  return screening.capacity - taken;
+  return taken;
+}
+
+/** Seul endroit où sont calculées les places restantes d'une séance. */
+export function remainingSeats(screening: Screening, takenSeats: number): number {
+  return screening.capacity - takenSeats;
 }
 
 export function hasStarted(screening: Screening, now: Date): boolean {
@@ -47,7 +52,7 @@ export function assertValidSeatCount(seats: number) {
 }
 
 /** Séance réservable : pas encore commencée et capacité suffisante. */
-export function assertBookable(screening: Screening, bookings: Booking[], seats: number, now: Date) {
+export function assertBookable(screening: Screening, takenSeats: number, seats: number, now: Date) {
   if (hasStarted(screening, now)) throw new DomainError("CONFLICT", "La séance a déjà commencé");
-  if (seats > remainingSeats(screening, bookings)) throw new DomainError("CONFLICT", "Plus assez de places");
+  if (seats > remainingSeats(screening, takenSeats)) throw new DomainError("CONFLICT", "Plus assez de places");
 }

@@ -30,7 +30,7 @@ export class BookSeatsService implements BookSeats {
     assertValidSeatCount(command.seats);
     assertBookable(
       screening,
-      await this.bookings.findByScreeningId(screening.id),
+      await this.bookings.countConfirmedSeats(screening.id),
       command.seats,
       this.clock.now()
     );

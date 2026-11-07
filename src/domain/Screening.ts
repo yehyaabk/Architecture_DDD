@@ -5,5 +5,5 @@ export interface Screening {
   room: string;
   startsAt: Date;
   capacity: number;
-  price: number;
+  unitPrice: number;
 }

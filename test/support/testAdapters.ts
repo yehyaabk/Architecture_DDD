@@ -40,8 +40,13 @@ export class ForcedPaymentGateway implements PaymentGateway {
 /** Notifier espion : enregistre les notifications au lieu de les envoyer. */
 export class SpyNotifier implements Notifier {
   readonly confirmations: { booking: Booking; screening: Screening }[] = [];
+  readonly cancellations: Booking[] = [];
 
   async bookingConfirmed(booking: Booking, screening: Screening): Promise<void> {
     this.confirmations.push({ booking, screening });
+  }
+
+  async bookingCancelled(booking: Booking): Promise<void> {
+    this.cancellations.push(booking);
   }
 }

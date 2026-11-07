@@ -36,7 +36,7 @@ export class BookSeatsService implements BookSeats {
     );
 
     const tariff = toTariff(command.tariff);
-    const total = computeTotalPrice(screening.price, command.seats, tariff);
+    const total = computeTotalPrice(screening.unitPrice, command.seats, tariff);
 
     if (!(await this.payment.charge(command.email, total))) {
       throw new DomainError("PAYMENT_REFUSED", "Paiement refusé");

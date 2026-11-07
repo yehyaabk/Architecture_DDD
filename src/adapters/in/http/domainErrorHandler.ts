@@ -11,7 +11,7 @@ const HTTP_STATUS: Record<DomainErrorCode, number> = {
 
 export const domainErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
   if (!(err instanceof DomainError)) {
-    // autre erreur (JSON invalide, erreur du TP1...) : gestionnaire suivant
+    // erreur technique (JSON invalide, bug...) : gestionnaire par défaut d'Express
     return next(err);
   }
   res.status(HTTP_STATUS[err.code]).json({ error: err.message });

@@ -10,4 +10,8 @@ export class ConsoleNotifier implements Notifier {
         `(${booking.seats} place(s), ${(booking.total / 100).toFixed(2)} €) est confirmée.`
     );
   }
+
+  async bookingCancelled(booking: Booking): Promise<void> {
+    console.log(`[SMTP] To: ${booking.email} — Votre réservation ${booking.id} a été annulée. Remboursement : ${(booking.total / 100).toFixed(2)} €`);
+  }
 }

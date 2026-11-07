@@ -11,4 +11,5 @@ export interface Booking {
   total: number;
   status: BookingStatus;
   createdAt: Date;
+  cancelledAt?: Date;
 }

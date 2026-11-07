@@ -1,18 +1,11 @@
 // Domaine : règles de réservation (fonctions pures)
-import { Tariff } from "./Booking";
+import { Booking, Tariff } from "./Booking";
 import { DomainError } from "./DomainError";
 import { Screening } from "./Screening";
 
 export const MIN_SEATS_PER_BOOKING = 1;
 export const MAX_SEATS_PER_BOOKING = 6;
 export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
-/** Ce dont le calcul des places a besoin d'une réservation (accepte aussi les réservations du TP1). */
-interface SeatHolder {
-  screeningId: string;
-  status: string;
-  seats: number;
-}
 
 export function isValidEmail(email: string): boolean {
   return !!email && EMAIL_PATTERN.test(email);
@@ -23,7 +16,7 @@ export function isValidSeatCount(seats: number): boolean {
 }
 
 /** Seul endroit où sont calculées les places restantes d'une séance. */
-export function remainingSeats(screening: { id: string; capacity: number }, bookings: SeatHolder[]): number {
+export function remainingSeats(screening: Screening, bookings: Booking[]): number {
   let taken = 0;
   for (const b of bookings) {
     if (b.screeningId === screening.id && b.status === "CONFIRMED") taken += b.seats;
@@ -54,7 +47,7 @@ export function assertValidSeatCount(seats: number) {
 }
 
 /** Séance réservable : pas encore commencée et capacité suffisante. */
-export function assertBookable(screening: Screening, bookings: SeatHolder[], seats: number, now: Date) {
+export function assertBookable(screening: Screening, bookings: Booking[], seats: number, now: Date) {
   if (hasStarted(screening, now)) throw new DomainError("CONFLICT", "La séance a déjà commencé");
   if (seats > remainingSeats(screening, bookings)) throw new DomainError("CONFLICT", "Plus assez de places");
 }

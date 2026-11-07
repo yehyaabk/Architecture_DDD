@@ -15,7 +15,7 @@ const SCREENING: Screening = {
   room: "Salle 1",
   startsAt: new Date("2026-06-02T20:00:00.000Z"),
   capacity: 10,
-  price: 1000,
+  unitPrice: 1000,
 };
 
 const COMMAND: BookSeatsCommand = {

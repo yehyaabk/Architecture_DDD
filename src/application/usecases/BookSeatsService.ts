@@ -1,13 +1,10 @@
-// Use case : réserver des places. Ne connaît que le domaine et les ports.
-import { Booking } from "../../domain/Booking";
-import { PricingPolicy } from "../../domain/booking/PricingPolicy";
+// Use case : réserver des places. Charger l'agrégat → méthode métier → payer → sauvegarder.
 import { SeatCount } from "../../domain/booking/SeatCount";
 import { toTariff } from "../../domain/booking/Tariff";
-import { assertBookable, assertValidEmail } from "../../domain/bookingRules";
 import { DomainError } from "../../domain/shared/DomainError";
-import { Money } from "../../domain/shared/Money";
+import { Email } from "../../domain/shared/Email";
 import { BookSeats, BookSeatsCommand } from "../ports/in/BookSeats";
-import { BookingRepository } from "../ports/out/BookingRepository";
+import { BookingView, toBookingView } from "../ports/in/BookingView";
 import { Clock } from "../ports/out/Clock";
 import { IdGenerator } from "../ports/out/IdGenerator";
 import { Notifier } from "../ports/out/Notifier";
@@ -17,46 +14,33 @@ import { ScreeningRepository } from "../ports/out/ScreeningRepository";
 export class BookSeatsService implements BookSeats {
   constructor(
     private readonly screenings: ScreeningRepository,
-    private readonly bookings: BookingRepository,
     private readonly payment: PaymentGateway,
     private readonly notifier: Notifier,
     private readonly clock: Clock,
     private readonly ids: IdGenerator
   ) {}
 
-  async execute(command: BookSeatsCommand): Promise<Booking> {
-    // les contrôles sont faits dans le même ordre que le legacy
+  async execute(command: BookSeatsCommand): Promise<BookingView> {
+    // les contrôles sont faits dans le même ordre que le legacy : séance, email, places, puis règles de l'agrégat
     const screening = await this.screenings.findById(command.screeningId);
     if (!screening) throw new DomainError("NOT_FOUND", "Séance introuvable");
 
-    assertValidEmail(command.email);
-    const seats = new SeatCount(command.seats);
-    assertBookable(
-      screening,
-      await this.bookings.countConfirmedSeats(screening.id),
-      seats.value,
-      this.clock.now()
-    );
+    const booking = screening.book({
+      email: new Email(command.email),
+      seats: new SeatCount(command.seats),
+      tariff: toTariff(command.tariff),
+      bookingId: this.ids.next(),
+      now: this.clock.now(),
+    });
 
-    const tariff = toTariff(command.tariff);
-    const total = PricingPolicy.total(Money.cents(screening.unitPrice), seats, tariff).cents;
-
-    if (!(await this.payment.charge(command.email, total))) {
+    // paiement refusé : l'agrégat modifié n'est pas sauvegardé, le stockage reste intact
+    if (!(await this.payment.charge(booking.email.value, booking.total.cents))) {
       throw new DomainError("PAYMENT_REFUSED", "Paiement refusé");
     }
 
-    const booking: Booking = {
-      id: this.ids.next(),
-      screeningId: screening.id,
-      email: command.email,
-      seats: seats.value,
-      tariff,
-      total,
-      status: "CONFIRMED",
-      createdAt: this.clock.now(),
-    };
-    await this.bookings.save(booking);
-    await this.notifier.bookingConfirmed(booking, screening);
-    return booking;
+    await this.screenings.save(screening);
+    const view = toBookingView(booking);
+    await this.notifier.bookingConfirmed(view, screening.movie);
+    return view;
   }
 }

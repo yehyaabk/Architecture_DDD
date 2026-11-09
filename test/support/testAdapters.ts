@@ -1,10 +1,9 @@
 // Adapters de test : implémentations déterministes des ports sortants
+import { BookingView } from "../../src/application/ports/in/BookingView";
 import { Clock } from "../../src/application/ports/out/Clock";
 import { IdGenerator } from "../../src/application/ports/out/IdGenerator";
 import { Notifier } from "../../src/application/ports/out/Notifier";
 import { PaymentGateway } from "../../src/application/ports/out/PaymentGateway";
-import { Booking } from "../../src/domain/Booking";
-import { Screening } from "../../src/domain/Screening";
 
 /** Horloge figée : renvoie toujours la même date. */
 export class FrozenClock implements Clock {
@@ -39,14 +38,14 @@ export class ForcedPaymentGateway implements PaymentGateway {
 
 /** Notifier espion : enregistre les notifications au lieu de les envoyer. */
 export class SpyNotifier implements Notifier {
-  readonly confirmations: { booking: Booking; screening: Screening }[] = [];
-  readonly cancellations: Booking[] = [];
+  readonly confirmations: { booking: BookingView; movie: string }[] = [];
+  readonly cancellations: BookingView[] = [];
 
-  async bookingConfirmed(booking: Booking, screening: Screening): Promise<void> {
-    this.confirmations.push({ booking, screening });
+  async bookingConfirmed(booking: BookingView, movie: string): Promise<void> {
+    this.confirmations.push({ booking, movie });
   }
 
-  async bookingCancelled(booking: Booking): Promise<void> {
+  async bookingCancelled(booking: BookingView): Promise<void> {
     this.cancellations.push(booking);
   }
 }

@@ -1,6 +1,6 @@
 // Port entrant : annuler une réservation
-import { Booking } from "../../../domain/Booking";
+import { BookingView } from "./BookingView";
 
 export interface CancelBooking {
-  execute(bookingId: string): Promise<Booking>;
+  execute(bookingId: string): Promise<BookingView>;
 }

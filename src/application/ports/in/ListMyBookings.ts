@@ -1,9 +1,9 @@
 // Port entrant : lister les réservations d'un client, avec le film et la date de la séance
-import { Booking } from "../../../domain/Booking";
+import { BookingView } from "./BookingView";
 
-export interface BookingWithScreening extends Booking {
+export interface BookingWithScreening extends BookingView {
   movie: string;
-  startsAt: Date | null;
+  startsAt: Date;
 }
 
 export interface ListMyBookings {

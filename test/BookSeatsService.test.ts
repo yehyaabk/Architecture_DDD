@@ -1,22 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryBookingRepository } from "../src/adapters/out/persistence/InMemoryBookingRepository";
 import { InMemoryScreeningRepository } from "../src/adapters/out/persistence/InMemoryScreeningRepository";
 import { BookSeatsCommand } from "../src/application/ports/in/BookSeats";
+import { BookingView } from "../src/application/ports/in/BookingView";
 import { BookSeatsService } from "../src/application/usecases/BookSeatsService";
-import { Booking } from "../src/domain/Booking";
-import { Screening } from "../src/domain/Screening";
+import { Screening } from "../src/domain/booking/Screening";
+import { SeatCount } from "../src/domain/booking/SeatCount";
+import { Email } from "../src/domain/shared/Email";
+import { Money } from "../src/domain/shared/Money";
 import { ForcedPaymentGateway, FrozenClock, SequentialIdGenerator, SpyNotifier } from "./support/testAdapters";
 
 const NOW = new Date("2026-06-01T12:00:00.000Z");
+const CAPACITY = 10;
 
-const SCREENING: Screening = {
-  id: "s1",
-  movie: "Dune",
-  room: "Salle 1",
-  startsAt: new Date("2026-06-02T20:00:00.000Z"),
-  capacity: 10,
-  unitPrice: 1000,
-};
+/** Séance s1 (10 places à 10 €), avec éventuellement des réservations déjà faites par un autre client. */
+function screening(startsAt = new Date("2026-06-02T20:00:00.000Z"), alreadyBooked: number[] = []): Screening {
+  const s = Screening.schedule({ id: "s1", movie: "Dune", room: "Salle 1", startsAt, capacity: CAPACITY, unitPrice: Money.euros(10) });
+  alreadyBooked.forEach((seats, i) =>
+    s.book({
+      bookingId: `existing-${i}`,
+      email: new Email("autre@example.com"),
+      seats: new SeatCount(seats),
+      tariff: "NORMAL",
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    })
+  );
+  return s;
+}
 
 const COMMAND: BookSeatsCommand = {
   screeningId: "s1",
@@ -25,51 +34,32 @@ const COMMAND: BookSeatsCommand = {
   tariff: "NORMAL",
 };
 
-function existingBooking(seats: number): Booking {
-  return {
-    id: "existing",
-    screeningId: "s1",
-    email: "autre@example.com",
-    seats,
-    tariff: "NORMAL",
-    total: seats * 1000,
-    status: "CONFIRMED",
-    createdAt: new Date("2026-05-01T10:00:00.000Z"),
-  };
-}
-
-function setup(options: { screening?: Screening; bookings?: Booking[]; paymentAccepted?: boolean } = {}) {
-  const bookings = new InMemoryBookingRepository(options.bookings ?? []);
+function setup(options: { screening?: Screening; paymentAccepted?: boolean } = {}) {
+  const screenings = new InMemoryScreeningRepository([options.screening ?? screening()]);
   const payment = new ForcedPaymentGateway(options.paymentAccepted ?? true);
   const notifier = new SpyNotifier();
-  const service = new BookSeatsService(
-    new InMemoryScreeningRepository([options.screening ?? SCREENING]),
-    bookings,
-    payment,
-    notifier,
-    new FrozenClock(NOW),
-    new SequentialIdGenerator()
-  );
-  return { service, bookings, payment, notifier };
+  const service = new BookSeatsService(screenings, payment, notifier, new FrozenClock(NOW), new SequentialIdGenerator());
+  return { service, screenings, payment, notifier };
 }
 
 type Context = ReturnType<typeof setup>;
 
 /** Une demande refusée ne doit laisser aucune trace : ni réservation, ni paiement, ni notification. */
-async function expectNoEffect({ bookings, payment, notifier }: Context, takenSeats = 0) {
-  expect(await bookings.findById("b1")).toBeNull();
-  expect(await bookings.countConfirmedSeats("s1")).toBe(takenSeats);
+async function expectNoEffect({ screenings, payment, notifier }: Context, takenSeats = 0) {
+  const stored = (await screenings.findById("s1"))!;
+  expect(stored.findBooking("b1")).toBeUndefined();
+  expect(stored.remainingSeats()).toBe(CAPACITY - takenSeats);
   expect(payment.charges).toEqual([]);
   expect(notifier.confirmations).toEqual([]);
 }
 
 describe("BookSeatsService", () => {
-  it("réserve des places, calcule le prix (4 places étudiant = 2 520 centimes pour 10 €) et notifie le client", async () => {
+  it("réserve des places, calcule le prix (4 places étudiant = 2 520 centimes pour 10 €), sauvegarde et notifie", async () => {
     const context = setup();
 
     const booking = await context.service.execute({ ...COMMAND, seats: 4, tariff: "STUDENT" });
 
-    const expected: Booking = {
+    const expected: BookingView = {
       id: "b1",
       screeningId: "s1",
       email: "client@example.com",
@@ -80,13 +70,15 @@ describe("BookSeatsService", () => {
       createdAt: NOW,
     };
     expect(booking).toEqual(expected);
-    expect(await context.bookings.findById("b1")).toEqual(expected);
+    const stored = (await context.screenings.findById("s1"))!;
+    expect(stored.findBooking("b1")?.toSnapshot()).toEqual(expected);
+    expect(stored.remainingSeats()).toBe(6);
     expect(context.payment.charges).toEqual([{ email: "client@example.com", amount: 2520 }]);
-    expect(context.notifier.confirmations).toEqual([{ booking: expected, screening: SCREENING }]);
+    expect(context.notifier.confirmations).toEqual([{ booking: expected, movie: "Dune" }]);
   });
 
   it("refuse si la capacité de la salle est dépassée", async () => {
-    const context = setup({ bookings: [existingBooking(9)] });
+    const context = setup({ screening: screening(undefined, [6, 3]) });
 
     await expect(context.service.execute(COMMAND)).rejects.toMatchObject({
       code: "CONFLICT",
@@ -98,7 +90,7 @@ describe("BookSeatsService", () => {
 
   it("refuse une séance déjà commencée (code CONFLICT)", async () => {
     // cas limite : la séance commence à l'instant exact de la demande
-    const context = setup({ screening: { ...SCREENING, startsAt: NOW } });
+    const context = setup({ screening: screening(NOW) });
 
     await expect(context.service.execute(COMMAND)).rejects.toMatchObject({
       code: "CONFLICT",
@@ -141,7 +133,7 @@ describe("BookSeatsService", () => {
     await expectNoEffect(context);
   });
 
-  it("n'enregistre rien et ne notifie pas si le paiement est refusé (code PAYMENT_REFUSED)", async () => {
+  it("ne sauvegarde rien et ne notifie pas si le paiement est refusé (code PAYMENT_REFUSED)", async () => {
     const context = setup({ paymentAccepted: false });
 
     await expect(context.service.execute(COMMAND)).rejects.toMatchObject({
@@ -149,9 +141,11 @@ describe("BookSeatsService", () => {
       message: "Paiement refusé",
     });
 
-    // le paiement a bien été demandé, avec le bon montant, mais rien d'autre n'a suivi
+    // le paiement a bien été demandé, avec le bon montant, mais l'agrégat modifié n'a pas été sauvegardé
     expect(context.payment.charges).toEqual([{ email: "client@example.com", amount: 2000 }]);
-    expect(await context.bookings.findById("b1")).toBeNull();
+    const stored = (await context.screenings.findById("s1"))!;
+    expect(stored.findBooking("b1")).toBeUndefined();
+    expect(stored.remainingSeats()).toBe(CAPACITY);
     expect(context.notifier.confirmations).toEqual([]);
   });
 });

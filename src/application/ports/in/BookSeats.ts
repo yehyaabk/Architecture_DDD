@@ -1,5 +1,5 @@
 // Port entrant : ce que l'application sait faire — réserver des places
-import { Booking } from "../../../domain/Booking";
+import { BookingView } from "./BookingView";
 
 export interface BookSeatsCommand {
   screeningId: string;
@@ -9,5 +9,5 @@ export interface BookSeatsCommand {
 }
 
 export interface BookSeats {
-  execute(command: BookSeatsCommand): Promise<Booking>;
+  execute(command: BookSeatsCommand): Promise<BookingView>;
 }

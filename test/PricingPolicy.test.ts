@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { computeTotalPrice } from "../src/domain/pricing";
+import { PricingPolicy } from "../src/domain/booking/PricingPolicy";
+import { SeatCount } from "../src/domain/booking/SeatCount";
+import { Tariff } from "../src/domain/booking/Tariff";
+import { Money } from "../src/domain/shared/Money";
 
-describe("computeTotalPrice", () => {
+// mêmes cas qu'au TP1 : seule la signature change (Money et SeatCount au lieu de nombres)
+const computeTotalPrice = (unitPrice: number, seats: number, tariff: Tariff) =>
+  PricingPolicy.total(Money.cents(unitPrice), new SeatCount(seats), tariff).cents;
+
+describe("PricingPolicy", () => {
   it("tarif normal : prix unitaire × nombre de places", () => {
     expect(computeTotalPrice(1150, 1, "NORMAL")).toBe(1150);
     expect(computeTotalPrice(1150, 2, "NORMAL")).toBe(2300);

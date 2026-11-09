@@ -1,7 +1,7 @@
 // Use case : annuler une réservation. Ne connaît que le domaine et les ports.
 import { Booking } from "../../domain/Booking";
 import { cancel } from "../../domain/cancellationRules";
-import { DomainError } from "../../domain/DomainError";
+import { DomainError } from "../../domain/shared/DomainError";
 import { CancelBooking } from "../ports/in/CancelBooking";
 import { BookingRepository } from "../ports/out/BookingRepository";
 import { Clock } from "../ports/out/Clock";

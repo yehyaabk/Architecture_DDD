@@ -1,18 +1,15 @@
 // Domaine : règles de réservation (fonctions pures)
-import { Booking, Tariff } from "./Booking";
-import { DomainError } from "./DomainError";
+import { Booking } from "./Booking";
+import { DomainError } from "./shared/DomainError";
+import { EMAIL_PATTERN } from "./shared/Email";
 import { Screening } from "./Screening";
 
-export const MIN_SEATS_PER_BOOKING = 1;
-export const MAX_SEATS_PER_BOOKING = 6;
-export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
+/**
+ * Contrôle legacy sur l'email brut (sans normalisation) : " a@b.fr" reste refusé.
+ * Le value object Email (qui normalise) prendra le relais quand Screening.book() le recevra (question 7).
+ */
 export function isValidEmail(email: string): boolean {
   return !!email && EMAIL_PATTERN.test(email);
-}
-
-export function isValidSeatCount(seats: number): boolean {
-  return Number.isInteger(seats) && seats >= MIN_SEATS_PER_BOOKING && seats <= MAX_SEATS_PER_BOOKING;
 }
 
 /** Seul endroit qui définit les places prises sur une séance : seules les réservations confirmées comptent. */
@@ -33,22 +30,8 @@ export function hasStarted(screening: Screening, now: Date): boolean {
   return screening.startsAt.getTime() <= now.getTime();
 }
 
-/** Tout tarif autre que STUDENT est traité comme NORMAL (comportement legacy). */
-export function toTariff(value: unknown): Tariff {
-  return value === "STUDENT" ? "STUDENT" : "NORMAL";
-}
-
 export function assertValidEmail(email: string) {
   if (!isValidEmail(email)) throw new DomainError("INVALID", "Email invalide");
-}
-
-export function assertValidSeatCount(seats: number) {
-  if (!isValidSeatCount(seats)) {
-    throw new DomainError(
-      "INVALID",
-      `Entre ${MIN_SEATS_PER_BOOKING} et ${MAX_SEATS_PER_BOOKING} places par réservation`
-    );
-  }
 }
 
 /** Séance réservable : pas encore commencée et capacité suffisante. */

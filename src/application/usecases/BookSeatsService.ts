@@ -1,8 +1,11 @@
 // Use case : réserver des places. Ne connaît que le domaine et les ports.
 import { Booking } from "../../domain/Booking";
-import { assertBookable, assertValidEmail, assertValidSeatCount, toTariff } from "../../domain/bookingRules";
-import { DomainError } from "../../domain/DomainError";
-import { computeTotalPrice } from "../../domain/pricing";
+import { PricingPolicy } from "../../domain/booking/PricingPolicy";
+import { SeatCount } from "../../domain/booking/SeatCount";
+import { toTariff } from "../../domain/booking/Tariff";
+import { assertBookable, assertValidEmail } from "../../domain/bookingRules";
+import { DomainError } from "../../domain/shared/DomainError";
+import { Money } from "../../domain/shared/Money";
 import { BookSeats, BookSeatsCommand } from "../ports/in/BookSeats";
 import { BookingRepository } from "../ports/out/BookingRepository";
 import { Clock } from "../ports/out/Clock";
@@ -27,16 +30,16 @@ export class BookSeatsService implements BookSeats {
     if (!screening) throw new DomainError("NOT_FOUND", "Séance introuvable");
 
     assertValidEmail(command.email);
-    assertValidSeatCount(command.seats);
+    const seats = new SeatCount(command.seats);
     assertBookable(
       screening,
       await this.bookings.countConfirmedSeats(screening.id),
-      command.seats,
+      seats.value,
       this.clock.now()
     );
 
     const tariff = toTariff(command.tariff);
-    const total = computeTotalPrice(screening.unitPrice, command.seats, tariff);
+    const total = PricingPolicy.total(Money.cents(screening.unitPrice), seats, tariff).cents;
 
     if (!(await this.payment.charge(command.email, total))) {
       throw new DomainError("PAYMENT_REFUSED", "Paiement refusé");
@@ -46,7 +49,7 @@ export class BookSeatsService implements BookSeats {
       id: this.ids.next(),
       screeningId: screening.id,
       email: command.email,
-      seats: command.seats,
+      seats: seats.value,
       tariff,
       total,
       status: "CONFIRMED",

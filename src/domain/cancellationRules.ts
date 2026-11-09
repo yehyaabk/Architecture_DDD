@@ -1,6 +1,6 @@
 // Domaine : règle d'annulation (fonction pure)
 import { Booking } from "./Booking";
-import { DomainError } from "./DomainError";
+import { DomainError } from "./shared/DomainError";
 import { Screening } from "./Screening";
 
 /** Annulation possible jusqu'à CANCELLATION_DEADLINE_HOURS heures avant la séance. */

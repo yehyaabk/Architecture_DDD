@@ -1,5 +1,6 @@
 // Domaine : une réservation (total en centimes)
-export type Tariff = "NORMAL" | "STUDENT";
+import { Tariff } from "./booking/Tariff";
+
 export type BookingStatus = "CONFIRMED" | "CANCELLED";
 
 export interface Booking {

@@ -1,6 +1,6 @@
 // Adapter entrant HTTP : traduit les codes de DomainError en statuts HTTP
 import { ErrorRequestHandler } from "express";
-import { DomainError, DomainErrorCode } from "../../../domain/DomainError";
+import { DomainError, DomainErrorCode } from "../../../domain/shared/DomainError";
 
 const HTTP_STATUS: Record<DomainErrorCode, number> = {
   NOT_FOUND: 404,

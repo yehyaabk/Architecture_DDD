@@ -1,3 +1,12 @@
+# Auteurs
+
+Projet réalisé par :
+
+- ABOU KHECHFE Yehya
+- NGANGA Ivana Titia
+
+
+
 # CinéResa — version legacy
 
 API de réservation de places de cinéma, volontairement écrite « à l'ancienne » : tout est dans `src/server.ts`.

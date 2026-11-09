@@ -1,7 +1,6 @@
 # Document d'architecture technique — CinéResa
 
-> Binôme : ABOU KHECHFE YEHYA  , NGANGA IVANA TITIA
-> Date : 09/11/2026
+> Binôme : <noms> · Version : 1.0 · Date : 09/11/2026
 >
 > Ce document décrit le code du dépôt à l'issue du TP4 (`src/`). Les noms utilisés ici, dans le glossaire, dans les diagrammes et dans le code sont les mêmes.
 
@@ -90,12 +89,17 @@ Limite connue : la mesure suppose que deux réservations sur une même séance n
 ### 4.2 Diagramme de composants UML
 
 Question : *quels composants forment le contexte Réservation, et dans quel sens vont leurs dépendances ?*
-Source : [`diagrams/composants.puml`](diagrams/composants.puml).
+Source : [`diagrams/composants.puml`](diagrams/composants.puml) · export : [`diagrams/composants.svg`](diagrams/composants.svg).
+
+![Diagramme de composants UML du contexte Réservation](diagrams/composants.svg)
+
+Code source du diagramme :
 
 ```plantuml
 @startuml composants
 title Contexte Réservation : quels composants, et dans quel sens vont les dépendances ?
 skinparam componentStyle uml2
+skinparam nodesep 70
 
 package "adapters/in/http" {
   [router + domainErrorHandler] as HTTP
@@ -131,10 +135,10 @@ package "adapters/out" {
 }
 
 ' ports entrants : fournis par les use cases, utilisés par l'adapter HTTP
-UC - BookSeats
-UC - CancelBooking
-UC - ListUpcomingScreenings
-UC - ListMyBookings
+UC -up- BookSeats
+UC -up- CancelBooking
+UC -up- ListUpcomingScreenings
+UC -up- ListMyBookings
 HTTP ..> BookSeats
 HTTP ..> CancelBooking
 HTTP ..> ListUpcomingScreenings
@@ -180,7 +184,11 @@ endlegend
 ## 5. Vue dynamique : un cas d'erreur
 
 Question : *que se passe-t-il quand une réservation est refusée ?*
-Source : [`diagrams/sequence-reservation-refusee.puml`](diagrams/sequence-reservation-refusee.puml).
+Source : [`diagrams/sequence-reservation-refusee.puml`](diagrams/sequence-reservation-refusee.puml) · export : [`diagrams/sequence-reservation-refusee.svg`](diagrams/sequence-reservation-refusee.svg).
+
+![Diagramme de séquence UML d'une réservation refusée](diagrams/sequence-reservation-refusee.svg)
+
+Code source du diagramme :
 
 ```plantuml
 @startuml sequence-reservation-refusee

@@ -1,6 +1,7 @@
 @startuml composants
 title Contexte Réservation : quels composants, et dans quel sens vont les dépendances ?
 skinparam componentStyle uml2
+skinparam nodesep 70
 
 package "adapters/in/http" {
   [router + domainErrorHandler] as HTTP
@@ -36,10 +37,10 @@ package "adapters/out" {
 }
 
 ' ports entrants : fournis par les use cases, utilisés par l'adapter HTTP
-UC - BookSeats
-UC - CancelBooking
-UC - ListUpcomingScreenings
-UC - ListMyBookings
+UC -up- BookSeats
+UC -up- CancelBooking
+UC -up- ListUpcomingScreenings
+UC -up- ListMyBookings
 HTTP ..> BookSeats
 HTTP ..> CancelBooking
 HTTP ..> ListUpcomingScreenings

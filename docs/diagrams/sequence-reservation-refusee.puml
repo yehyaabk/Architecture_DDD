@@ -1,0 +1,56 @@
+@startuml sequence-reservation-refusee
+title Que se passe-t-il quand une réservation est refusée ?
+autonumber
+
+actor Client
+participant "router +\ndomainErrorHandler\n(adapter HTTP)" as HTTP
+participant BookSeatsService as UC
+participant ScreeningRepository as REPO
+participant "screening : Screening\n(racine d'agrégat)" as AGG
+participant PaymentGateway as PAY
+participant EventPublisher as BUS
+
+Client -> HTTP : POST /screenings/s1/bookings\n{ email, seats: 4, tariff }
+HTTP -> UC : execute(command)
+UC -> REPO : findById("s1")
+REPO --> UC : screening (copie du snapshot)
+note right of UC
+  new Email(...) et new SeatCount(...) :
+  un email ou un nombre de places invalide
+  lève DomainError(INVALID) → 400
+end note
+UC -> AGG : book({ bookingId, email, seats, tariff, now })
+
+alt plus assez de places (seats > remainingSeats())
+  AGG --> UC : DomainError(CONFLICT, "Plus assez de places")
+  UC --> HTTP : DomainError(CONFLICT)
+  HTTP --> Client : 409 { error: "Plus assez de places" }
+else paiement refusé
+  AGG --> UC : booking (BookingConfirmed en attente dans l'agrégat)
+  UC -> PAY : charge(email, total.cents)
+  PAY --> UC : false
+  UC --> HTTP : DomainError(PAYMENT_REFUSED)
+  HTTP --> Client : 402 { error: "Paiement refusé" }
+  note over UC, BUS
+    ni save() ni publish() : la copie modifiée est abandonnée,
+    le stockage est intact et aucun mail n'est envoyé
+  end note
+else réservation acceptée
+  AGG --> UC : booking
+  UC -> PAY : charge(email, total.cents)
+  PAY --> UC : true
+  UC -> REPO : save(screening)
+  UC -> AGG : pullEvents()
+  AGG --> UC : [BookingConfirmed]
+  UC -> BUS : publish([BookingConfirmed])
+  note right of BUS : NotifyCustomer → Notifier\n(mail de confirmation)
+  UC --> HTTP : BookingView
+  HTTP --> Client : 201 BookingView
+end
+
+legend right
+  Flèche pleine = appel ; flèche pointillée = retour ou exception.
+  Les DomainError sont traduites en statut HTTP par domainErrorHandler.
+  Les événements ne sont publiés qu'après save().
+endlegend
+@enduml

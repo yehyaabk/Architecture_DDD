@@ -1,0 +1,77 @@
+@startuml composants
+title Contexte Réservation : quels composants, et dans quel sens vont les dépendances ?
+skinparam componentStyle uml2
+
+package "adapters/in/http" {
+  [router + domainErrorHandler] as HTTP
+}
+
+package "application" {
+  interface BookSeats
+  interface CancelBooking
+  interface ListUpcomingScreenings
+  interface ListMyBookings
+  [usecases\nBookSeatsService · CancelBookingService\nListUpcomingScreeningsService · ListMyBookingsService] as UC
+  [NotifyCustomer] as NC
+  interface ScreeningRepository
+  interface PaymentGateway
+  interface EventPublisher
+  interface Notifier
+  interface Clock
+  interface IdGenerator
+}
+
+package "domain" {
+  [booking\nScreening · Booking · PricingPolicy\nSeatCount · Tariff · events] as BOOKING
+  [shared\nMoney · Email · DomainError · DomainEvent] as SHARED
+}
+
+package "adapters/out" {
+  [InMemoryScreeningRepository] as REPO
+  [InMemoryEventBus] as BUS
+  [ConsoleNotifier] as MAIL
+  [FakePaymentGateway] as PAY
+  [SystemClock] as CLOCK
+  [UuidGenerator] as UUID
+}
+
+' ports entrants : fournis par les use cases, utilisés par l'adapter HTTP
+UC - BookSeats
+UC - CancelBooking
+UC - ListUpcomingScreenings
+UC - ListMyBookings
+HTTP ..> BookSeats
+HTTP ..> CancelBooking
+HTTP ..> ListUpcomingScreenings
+HTTP ..> ListMyBookings
+
+' ports sortants : requis par l'application, réalisés par les adapters
+UC ..> ScreeningRepository
+UC ..> PaymentGateway
+UC ..> EventPublisher
+UC ..> Clock
+UC ..> IdGenerator
+NC ..> Notifier
+REPO -up- ScreeningRepository
+PAY -up- PaymentGateway
+BUS -up- EventPublisher
+MAIL -up- Notifier
+CLOCK -up- Clock
+UUID -up- IdGenerator
+
+' tout le monde dépend du domaine, le domaine ne dépend de personne
+UC ..> BOOKING
+NC ..> BOOKING
+BOOKING ..> SHARED
+HTTP ..> SHARED
+REPO ..> BOOKING
+
+legend right
+  Flèche pointillée = « dépend de » (import), toujours vers le métier.
+  Rond = port (interface) ; trait plein = le composant fournit / réalise le port.
+  Non représentés : container.ts (composition root, seul à connaître les classes
+  concrètes ; c'est lui qui abonne NotifyCustomer au InMemoryEventBus), main.ts,
+  dbJsonSeed (charge data/db.json au démarrage).
+  Règle vérifiée automatiquement par test/architecture.test.ts.
+endlegend
+@enduml

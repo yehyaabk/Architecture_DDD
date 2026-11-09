@@ -4,12 +4,14 @@ import express, { Express } from "express";
 import path from "path";
 import { domainErrorHandler } from "./adapters/in/http/domainErrorHandler";
 import { createRouter } from "./adapters/in/http/router";
+import { InMemoryEventBus } from "./adapters/out/events/InMemoryEventBus";
 import { ConsoleNotifier } from "./adapters/out/notification/ConsoleNotifier";
 import { FakePaymentGateway } from "./adapters/out/payment/FakePaymentGateway";
 import { loadScreenings } from "./adapters/out/persistence/dbJsonSeed";
 import { InMemoryScreeningRepository } from "./adapters/out/persistence/InMemoryScreeningRepository";
 import { SystemClock } from "./adapters/out/system/SystemClock";
 import { UuidGenerator } from "./adapters/out/system/UuidGenerator";
+import { NotifyCustomer } from "./application/handlers/NotifyCustomer";
 import { Clock } from "./application/ports/out/Clock";
 import { IdGenerator } from "./application/ports/out/IdGenerator";
 import { Notifier } from "./application/ports/out/Notifier";
@@ -19,6 +21,7 @@ import { BookSeatsService } from "./application/usecases/BookSeatsService";
 import { CancelBookingService } from "./application/usecases/CancelBookingService";
 import { ListMyBookingsService } from "./application/usecases/ListMyBookingsService";
 import { ListUpcomingScreeningsService } from "./application/usecases/ListUpcomingScreeningsService";
+import { BookingCancelled, BookingConfirmed } from "./domain/booking/events";
 
 export interface Adapters {
   screenings: ScreeningRepository;
@@ -32,12 +35,18 @@ export interface Adapters {
 export function buildApp(adapters: Adapters): Express {
   const { screenings, payment, notifier, clock, ids = new UuidGenerator() } = adapters;
 
+  // les e-mails partent en réaction aux événements, plus depuis les use cases
+  const events = new InMemoryEventBus();
+  const notifyCustomer = new NotifyCustomer(notifier);
+  events.subscribe(BookingConfirmed.TYPE, (e: BookingConfirmed) => notifyCustomer.onBookingConfirmed(e));
+  events.subscribe(BookingCancelled.TYPE, (e: BookingCancelled) => notifyCustomer.onBookingCancelled(e));
+
   const app = express();
   app.use(express.json());
   app.use(
     createRouter({
-      bookSeats: new BookSeatsService(screenings, payment, notifier, clock, ids),
-      cancelBooking: new CancelBookingService(screenings, notifier, clock),
+      bookSeats: new BookSeatsService(screenings, payment, events, clock, ids),
+      cancelBooking: new CancelBookingService(screenings, events, clock),
       listUpcomingScreenings: new ListUpcomingScreeningsService(screenings, clock),
       listMyBookings: new ListMyBookingsService(screenings),
     })

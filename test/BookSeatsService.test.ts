@@ -3,11 +3,12 @@ import { InMemoryScreeningRepository } from "../src/adapters/out/persistence/InM
 import { BookSeatsCommand } from "../src/application/ports/in/BookSeats";
 import { BookingView } from "../src/application/ports/in/BookingView";
 import { BookSeatsService } from "../src/application/usecases/BookSeatsService";
+import { BookingConfirmed } from "../src/domain/booking/events";
 import { Screening } from "../src/domain/booking/Screening";
 import { SeatCount } from "../src/domain/booking/SeatCount";
 import { Email } from "../src/domain/shared/Email";
 import { Money } from "../src/domain/shared/Money";
-import { ForcedPaymentGateway, FrozenClock, SequentialIdGenerator, SpyNotifier } from "./support/testAdapters";
+import { busNotifying, ForcedPaymentGateway, FrozenClock, SequentialIdGenerator, SpyNotifier } from "./support/testAdapters";
 
 const NOW = new Date("2026-06-01T12:00:00.000Z");
 const CAPACITY = 10;
@@ -38,23 +39,25 @@ function setup(options: { screening?: Screening; paymentAccepted?: boolean } = {
   const screenings = new InMemoryScreeningRepository([options.screening ?? screening()]);
   const payment = new ForcedPaymentGateway(options.paymentAccepted ?? true);
   const notifier = new SpyNotifier();
-  const service = new BookSeatsService(screenings, payment, notifier, new FrozenClock(NOW), new SequentialIdGenerator());
-  return { service, screenings, payment, notifier };
+  const bus = busNotifying(notifier);
+  const service = new BookSeatsService(screenings, payment, bus, new FrozenClock(NOW), new SequentialIdGenerator());
+  return { service, screenings, payment, bus, notifier };
 }
 
 type Context = ReturnType<typeof setup>;
 
-/** Une demande refusée ne doit laisser aucune trace : ni réservation, ni paiement, ni notification. */
-async function expectNoEffect({ screenings, payment, notifier }: Context, takenSeats = 0) {
+/** Une demande refusée ne doit laisser aucune trace : ni réservation, ni paiement, ni événement, ni e-mail. */
+async function expectNoEffect({ screenings, payment, bus, notifier }: Context, takenSeats = 0) {
   const stored = (await screenings.findById("s1"))!;
   expect(stored.findBooking("b1")).toBeUndefined();
   expect(stored.remainingSeats()).toBe(CAPACITY - takenSeats);
   expect(payment.charges).toEqual([]);
+  expect(bus.published).toEqual([]);
   expect(notifier.confirmations).toEqual([]);
 }
 
 describe("BookSeatsService", () => {
-  it("réserve des places, calcule le prix (4 places étudiant = 2 520 centimes pour 10 €), sauvegarde et notifie", async () => {
+  it("réserve des places, calcule le prix (4 places étudiant = 2 520 centimes pour 10 €) et sauvegarde", async () => {
     const context = setup();
 
     const booking = await context.service.execute({ ...COMMAND, seats: 4, tariff: "STUDENT" });
@@ -74,7 +77,32 @@ describe("BookSeatsService", () => {
     expect(stored.findBooking("b1")?.toSnapshot()).toEqual(expected);
     expect(stored.remainingSeats()).toBe(6);
     expect(context.payment.charges).toEqual([{ email: "client@example.com", amount: 2520 }]);
-    expect(context.notifier.confirmations).toEqual([{ booking: expected, movie: "Dune" }]);
+  });
+
+  it("publie BookingConfirmed, qui déclenche le mail de confirmation", async () => {
+    const context = setup();
+
+    await context.service.execute({ ...COMMAND, seats: 4, tariff: "STUDENT" });
+
+    expect(context.bus.published).toHaveLength(1);
+    const event = context.bus.published[0] as BookingConfirmed;
+    expect(event).toBeInstanceOf(BookingConfirmed);
+    expect(event.occurredAt).toEqual(NOW);
+    const data = { bookingId: "b1", screeningId: "s1", movie: "Dune", email: "client@example.com", seats: 4, total: 2520 };
+    expect(event.booking).toEqual(data);
+    expect(context.notifier.confirmations).toEqual([data]);
+  });
+
+  it("publie les événements après la sauvegarde", async () => {
+    const context = setup();
+    let storedWhenPublished: boolean | undefined;
+    context.bus.subscribe(BookingConfirmed.TYPE, async () => {
+      storedWhenPublished = !!(await context.screenings.findById("s1"))!.findBooking("b1");
+    });
+
+    await context.service.execute(COMMAND);
+
+    expect(storedWhenPublished).toBe(true);
   });
 
   it("refuse si la capacité de la salle est dépassée", async () => {
@@ -133,7 +161,7 @@ describe("BookSeatsService", () => {
     await expectNoEffect(context);
   });
 
-  it("ne sauvegarde rien et ne notifie pas si le paiement est refusé (code PAYMENT_REFUSED)", async () => {
+  it("paiement refusé : rien n'est sauvegardé ni publié, aucun mail (code PAYMENT_REFUSED)", async () => {
     const context = setup({ paymentAccepted: false });
 
     await expect(context.service.execute(COMMAND)).rejects.toMatchObject({
@@ -146,6 +174,7 @@ describe("BookSeatsService", () => {
     const stored = (await context.screenings.findById("s1"))!;
     expect(stored.findBooking("b1")).toBeUndefined();
     expect(stored.remainingSeats()).toBe(CAPACITY);
+    expect(context.bus.published).toEqual([]);
     expect(context.notifier.confirmations).toEqual([]);
   });
 });

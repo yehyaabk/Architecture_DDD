@@ -13,23 +13,27 @@ export interface BookingEventData {
 }
 
 export class BookingConfirmed implements DomainEvent {
-  readonly type = "BookingConfirmed";
+  static readonly TYPE = "BookingConfirmed";
+  readonly type = BookingConfirmed.TYPE;
 
   constructor(
     readonly occurredAt: Date,
     readonly booking: BookingEventData
   ) {
+    Object.freeze(booking);
     Object.freeze(this);
   }
 }
 
 export class BookingCancelled implements DomainEvent {
-  readonly type = "BookingCancelled";
+  static readonly TYPE = "BookingCancelled";
+  readonly type = BookingCancelled.TYPE;
 
   constructor(
     readonly occurredAt: Date,
     readonly booking: BookingEventData
   ) {
+    Object.freeze(booking);
     Object.freeze(this);
   }
 }

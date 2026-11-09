@@ -1,7 +1,7 @@
-// Port sortant : prévenir le client que sa réservation est confirmée ou annulée
-import { BookingView } from "../in/BookingView";
+// Port sortant : envoyer un e-mail au client (confirmation ou remboursement)
+import { BookingEventData } from "../../../domain/booking/events";
 
 export interface Notifier {
-  bookingConfirmed(booking: BookingView, movie: string): Promise<void>;
-  bookingCancelled(booking: BookingView): Promise<void>;
+  bookingConfirmed(booking: BookingEventData): Promise<void>;
+  bookingCancelled(booking: BookingEventData): Promise<void>;
 }

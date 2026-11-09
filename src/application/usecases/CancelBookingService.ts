@@ -1,15 +1,15 @@
-// Use case : annuler une réservation. Charger l'agrégat → méthode métier → sauvegarder.
+// Use case : annuler une réservation. Charger l'agrégat → méthode métier → sauvegarder → publier.
 import { DomainError } from "../../domain/shared/DomainError";
 import { BookingView, toBookingView } from "../ports/in/BookingView";
 import { CancelBooking } from "../ports/in/CancelBooking";
 import { Clock } from "../ports/out/Clock";
-import { Notifier } from "../ports/out/Notifier";
+import { EventPublisher } from "../ports/out/EventPublisher";
 import { ScreeningRepository } from "../ports/out/ScreeningRepository";
 
 export class CancelBookingService implements CancelBooking {
   constructor(
     private readonly screenings: ScreeningRepository,
-    private readonly notifier: Notifier,
+    private readonly events: EventPublisher,
     private readonly clock: Clock
   ) {}
 
@@ -20,8 +20,7 @@ export class CancelBookingService implements CancelBooking {
     const booking = screening.cancel(bookingId, this.clock.now());
 
     await this.screenings.save(screening);
-    const view = toBookingView(booking);
-    await this.notifier.bookingCancelled(view);
-    return view;
+    await this.events.publish(screening.pullEvents());
+    return toBookingView(booking);
   }
 }
